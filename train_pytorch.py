@@ -128,9 +128,9 @@ val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
 train_dataset.dataset.transform = train_transform
 val_dataset.dataset.transform = val_transform
 
-# Create data loaders
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
+# Create data loaders (Windows fix: num_workers=0)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=True)
 
 print(f"📊 Training samples: {len(train_dataset)}")
 print(f"📊 Validation samples: {len(val_dataset)}")
@@ -395,53 +395,54 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         'best_model_state': best_model_state
     }
 
-# --- Phase 1: Train Classification Head ---
-print("\n🚀 Phase 1: Training classification head...")
-phase1_results = train_model(
-    model, train_loader, val_loader, criterion, optimizer, scheduler, 
-    EPOCHS_PHASE1, "phase1"
-)
+if __name__ == "__main__":
+    # --- Phase 1: Train Classification Head ---
+    print("\n🚀 Phase 1: Training classification head...")
+    phase1_results = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler, 
+        EPOCHS_PHASE1, "phase1"
+    )
 
-# --- Phase 2: Fine-tuning ---
-print("\n🚀 Phase 2: Fine-tuning with unfrozen backbone...")
-print("=" * 60)
+    # --- Phase 2: Fine-tuning ---
+    print("\n🚀 Phase 2: Fine-tuning with unfrozen backbone...")
+    print("=" * 60)
 
-# Unfreeze backbone layers
-model.unfreeze_backbone(unfreeze_layers=20)
+    # Unfreeze backbone layers
+    model.unfreeze_backbone(unfreeze_layers=20)
 
-# Lower learning rate for fine-tuning
-for param_group in optimizer.param_groups:
-    param_group['lr'] = 0.00005
+    # Lower learning rate for fine-tuning
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = 0.00005
 
-# Update scheduler for fine-tuning
-scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.2, patience=5, verbose=True, min_lr=1e-9)
+    # Update scheduler for fine-tuning
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.2, patience=5, verbose=True, min_lr=1e-9)
 
-phase2_results = train_model(
-    model, train_loader, val_loader, criterion, optimizer, scheduler, 
-    EPOCHS_PHASE2, "phase2"
-)
+    phase2_results = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler, 
+        EPOCHS_PHASE2, "phase2"
+    )
 
-# --- Final Model Save ---
-final_model_path = MODEL_SAVE_PATH / MODEL_FILENAME
-torch.save({
-    'model_state_dict': model.state_dict(),
-    'phase1_results': phase1_results,
-    'phase2_results': phase2_results,
-    'class_names': CLASS_NAMES,
-    'img_size': IMG_SIZE
-}, final_model_path)
+    # --- Final Model Save ---
+    final_model_path = MODEL_SAVE_PATH / MODEL_FILENAME
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'phase1_results': phase1_results,
+        'phase2_results': phase2_results,
+        'class_names': CLASS_NAMES,
+        'img_size': IMG_SIZE
+    }, final_model_path)
 
-print(f"✅ Final model saved as: {final_model_path}")
+    print(f"✅ Final model saved as: {final_model_path}")
 
-print(f"\n" + "="*70)
-print(f"✅ PYTORCH TRAINING COMPLETED!")
-print(f"="*70)
-print(f"🔧 Key advantages of PyTorch version:")
-print(f"   • EfficientNet-B4 backbone (best for medical imaging)")
-print(f"   • Optimized data loading with medical-specific augmentation")
-print(f"   • Better memory management for high-resolution images")
-print(f"   • Advanced learning rate scheduling")
-print(f"   • Comprehensive model checkpointing")
-print(f"   • Real-time training progress monitoring")
-print(f"📁 All models saved in: {MODEL_SAVE_PATH}")
-print(f"🎯 Expected maximum accuracy with PyTorch optimization!")
+    print(f"\n" + "="*70)
+    print(f"✅ PYTORCH TRAINING COMPLETED!")
+    print(f"="*70)
+    print(f"🔧 Key advantages of PyTorch version:")
+    print(f"   • EfficientNet-B4 backbone (best for medical imaging)")
+    print(f"   • Optimized data loading with medical-specific augmentation")
+    print(f"   • Better memory management for high-resolution images")
+    print(f"   • Advanced learning rate scheduling")
+    print(f"   • Comprehensive model checkpointing")
+    print(f"   • Real-time training progress monitoring")
+    print(f"📁 All models saved in: {MODEL_SAVE_PATH}")
+    print(f"🎯 Expected maximum accuracy with PyTorch optimization!")
