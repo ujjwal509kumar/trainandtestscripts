@@ -18,12 +18,22 @@ import time
 print("🚀 PYTORCH TRAINING - MAXIMUM ACCURACY FOR MEDICAL IMAGING")
 print("=" * 70)
 
-# Check for GPU
+# Check for GPU and ensure CUDA is properly configured
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"🔧 Using device: {device}")
+
 if torch.cuda.is_available():
     print(f"   GPU: {torch.cuda.get_device_name(0)}")
     print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print(f"   CUDA Version: {torch.version.cuda}")
+    print(f"   PyTorch Version: {torch.__version__}")
+    
+    # Clear GPU cache
+    torch.cuda.empty_cache()
+    print("   ✅ GPU cache cleared and ready for training")
+else:
+    print("   ⚠️ CUDA not available - training will be slow on CPU")
+    print("   💡 Consider installing CUDA-enabled PyTorch for GPU acceleration")
 
 # --- Configuration ---
 DATASET_PATH = Path('./test_high_quality')
@@ -213,9 +223,11 @@ class OptimizedOsteoporosisModel(nn.Module):
         
         print(f"🔧 Unfroze last {unfreeze_layers} layers for fine-tuning")
 
-# Create model
-model = OptimizedOsteoporosisModel(num_classes=NUM_CLASSES).to(device)
+# Create model and ensure it's on the correct device
+model = OptimizedOsteoporosisModel(num_classes=NUM_CLASSES)
+model = model.to(device)
 print(f"\n📋 Model created with EfficientNet-B4 backbone")
+print(f"📋 Model moved to device: {next(model.parameters()).device}")
 
 # Count parameters
 total_params = sum(p.numel() for p in model.parameters())
@@ -226,7 +238,7 @@ print(f"📊 Trainable parameters: {trainable_params:,}")
 # --- Loss Function and Optimizer ---
 criterion = nn.CrossEntropyLoss(weight=class_weights)
 optimizer = optim.Adam(model.parameters(), lr=0.0005, betas=(0.9, 0.999), eps=1e-7, weight_decay=1e-4)
-scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.3, patience=7, verbose=True, min_lr=1e-8)
+scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.3, patience=7, min_lr=1e-8)
 
 # --- Training Functions ---
 def train_epoch(model, train_loader, criterion, optimizer, device):
@@ -342,6 +354,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print(f"   Validation Loss: {val_loss:.4f} | Validation Acc: {val_acc:.4f} ({val_acc*100:.2f}%)")
         print(f"   Time: {epoch_time:.1f}s | LR: {optimizer.param_groups[0]['lr']:.2e}")
         
+        # GPU memory usage if available
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+            gpu_allocated = torch.cuda.memory_allocated(0) / 1e9
+            gpu_cached = torch.cuda.memory_reserved(0) / 1e9
+            print(f"   GPU Memory: {gpu_allocated:.1f}GB allocated, {gpu_cached:.1f}GB cached of {gpu_memory:.1f}GB total")
+        
         # Save model every epoch
         epoch_model_path = MODEL_SAVE_PATH / f'{phase_name}_epoch_{epoch+1}.pth'
         torch.save({
@@ -415,7 +434,7 @@ if __name__ == "__main__":
         param_group['lr'] = 0.00005
 
     # Update scheduler for fine-tuning
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.2, patience=5, verbose=True, min_lr=1e-9)
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.2, patience=5, min_lr=1e-9)
 
     phase2_results = train_model(
         model, train_loader, val_loader, criterion, optimizer, scheduler, 
